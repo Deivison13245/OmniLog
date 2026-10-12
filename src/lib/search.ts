@@ -88,24 +88,26 @@ export async function orchestrateSearch(query: string, filter: SearchFilter = 'a
   if (filter === 'all' || filter === 'book') {
     tasks.push(
       (async () => {
+        let openLibraryFailed = false;
+
         try {
           const openLibraryResults = await searchOpenLibrary(query);
           if (openLibraryResults.length > 0) {
             items.push(...openLibraryResults);
             return;
           }
-          // Fallback para Google Books se Open Library vier vazio
+        } catch (openLibErr) {
+          openLibraryFailed = true;
+          console.warn('OpenLibrary failed, trying Google Books fallback:', openLibErr);
+        }
+
+        try {
           const googleBooksResults = await searchGoogleBooks(query);
           items.push(...googleBooksResults);
-        } catch (openLibErr) {
-          console.warn('OpenLibrary failed, trying Google Books fallback:', openLibErr);
-          try {
-            const googleBooksResults = await searchGoogleBooks(query);
-            items.push(...googleBooksResults);
-          } catch (googleErr) {
-            console.error('Google Books also failed:', googleErr);
-            failedSources.push('openlibrary');
-          }
+        } catch (googleErr) {
+          console.error('Google Books failed:', googleErr);
+          if (openLibraryFailed) failedSources.push('openlibrary');
+          failedSources.push('googlebooks');
         }
       })()
     );

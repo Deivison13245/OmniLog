@@ -90,7 +90,7 @@ export default function SearchPage() {
         <div className="flex flex-col gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-300">
           <div className="flex items-center gap-2 font-semibold">
             <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
-            <span>Fonte de dados não configurada ou indisponível ({data.failedSources.map((s) => s.toUpperCase()).join(', ')}):</span>
+            <span>Fonte de dados indisponível ({data.failedSources.map((s) => s.toUpperCase()).join(', ')}):</span>
           </div>
           <p className="text-amber-200/90 pl-6">
             {data.failedSources.includes('igdb') && (
@@ -98,6 +98,9 @@ export default function SearchPage() {
             )}
             {data.failedSources.includes('tmdb') && (
               <span className="block">• <strong>Filmes / Séries (TMDB):</strong> Configure <code>TMDB_READ_TOKEN</code> no seu arquivo <code>.env.local</code>.</span>
+            )}
+            {(data.failedSources.includes('openlibrary') || data.failedSources.includes('googlebooks')) && (
+              <span className="block">• <strong>Livros:</strong> Não foi possível concluir a busca porque uma ou mais fontes estão indisponíveis. Tente novamente mais tarde; a Open Library não exige chave, e <code>GOOGLE_BOOKS_API_KEY</code> é opcional.</span>
             )}
           </p>
         </div>
