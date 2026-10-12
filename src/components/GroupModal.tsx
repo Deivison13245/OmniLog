@@ -1,9 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Group, LibraryItem } from '@/lib/types';
-import { FolderPlus, X, Check, Loader2, Trash2 } from 'lucide-react';
+import { Check, FolderPlus, Loader2, Trash2, X } from 'lucide-react';
+import {
+  createGroup as createLocalGroup,
+  deleteGroup as deleteLocalGroup,
+  setItemGroup,
+  useLibraryItem,
+  useLibraryGroups,
+} from '@/lib/library-db';
+import { LibraryItem } from '@/lib/types';
 
 interface GroupModalProps {
   item: LibraryItem;
@@ -12,80 +18,65 @@ interface GroupModalProps {
 }
 
 const PRESET_COLORS = [
-  '#10b981', // Emerald
-  '#3b82f6', // Blue
-  '#8b5cf6', // Violet
-  '#ec4899', // Pink
-  '#f59e0b', // Amber
-  '#ef4444', // Red
-  '#06b6d4', // Cyan
+  '#10b981',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#f59e0b',
+  '#ef4444',
+  '#06b6d4',
 ];
 
 export function GroupModal({ item, isOpen, onClose }: GroupModalProps) {
-  const queryClient = useQueryClient();
+  const allGroups = useLibraryGroups();
+  const currentItem = useLibraryItem(item.id);
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
   const [isCreating, setIsCreating] = useState(false);
-
-  // Buscar todos os grupos existentes
-  const { data: allGroups = [], isLoading } = useQuery<Group[]>({
-    queryKey: ['groups'],
-    queryFn: async () => {
-      const res = await fetch('/api/groups');
-      if (!res.ok) throw new Error('Falha ao carregar grupos');
-      return res.json();
-    },
-    enabled: isOpen,
-  });
-
-  // Criar novo grupo
-  const createGroupMutation = useMutation({
-    mutationFn: async ({ name, color }: { name: string; color: string }) => {
-      const res = await fetch('/api/groups', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, color }),
-      });
-      if (!res.ok) throw new Error('Erro ao criar grupo');
-      return res.json();
-    },
-    onSuccess: (newGroup: Group) => {
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
-      // Vincular imediatamente ao item
-      toggleGroupMutation.mutate({ groupId: newGroup.id, action: 'add' });
-      setNewGroupName('');
-      setIsCreating(false);
-    },
-  });
-
-  // Vincular/desvincular grupo do item
-  const toggleGroupMutation = useMutation({
-    mutationFn: async ({ groupId, action }: { groupId: number; action: 'add' | 'remove' }) => {
-      const res = await fetch(`/api/library/${item.id}/groups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupId, action }),
-      });
-      if (!res.ok) throw new Error('Erro ao alterar grupo');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['library'] });
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
-    },
-  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>();
 
   if (!isOpen) return null;
 
-  const currentGroupIds = new Set((item.groups || []).map((g) => g.id));
-
-  const handleCreateGroup = (e: React.FormEvent) => {
-    e.preventDefault();
+  const displayedItem = currentItem ?? item;
+  const currentGroupIds = new Set((displayedItem.groups ?? []).map((group) => group.id));
+  const handleCreateGroup = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!newGroupName.trim()) return;
-    createGroupMutation.mutate({
-      name: newGroupName.trim(),
-      color: selectedColor,
-    });
+
+    try {
+      setIsSaving(true);
+      setErrorMessage(undefined);
+      await createLocalGroup(newGroupName.trim(), selectedColor, item.id);
+      setNewGroupName('');
+      setIsCreating(false);
+    } catch (error: unknown) {
+      console.error('Falha ao criar grupo local:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível criar o grupo.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleGroup = async (groupId: number) => {
+    try {
+      setErrorMessage(undefined);
+      await setItemGroup(item.id, groupId, !currentGroupIds.has(groupId));
+    } catch (error: unknown) {
+      console.error('Falha ao alterar grupo do item:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível alterar o grupo.');
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: number, name: string) => {
+    if (!confirm(`Excluir o grupo "${name}"? Ele será removido de todos os itens.`)) return;
+    try {
+      setErrorMessage(undefined);
+      await deleteLocalGroup(groupId);
+    } catch (error: unknown) {
+      console.error('Falha ao excluir grupo local:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Não foi possível excluir o grupo.');
+    }
   };
 
   return (
@@ -94,19 +85,26 @@ export function GroupModal({ item, isOpen, onClose }: GroupModalProps) {
         <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
           <div>
             <h3 className="text-base font-bold text-white">Gerenciar Grupos & Coleções</h3>
-            <p className="line-clamp-1 text-xs text-neutral-400">{item.media.title}</p>
+            <p className="line-clamp-1 text-xs text-neutral-400">{displayedItem.media.title}</p>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Fechar grupos"
             className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Lista de grupos existentes */}
+        {errorMessage && (
+          <p role="alert" className="mt-3 rounded-lg bg-rose-500/10 p-2 text-xs text-rose-300">
+            {errorMessage}
+          </p>
+        )}
+
         <div className="mt-4 max-h-56 space-y-2 overflow-y-auto pr-1">
-          {isLoading ? (
+          {allGroups === undefined ? (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
             </div>
@@ -120,33 +118,38 @@ export function GroupModal({ item, isOpen, onClose }: GroupModalProps) {
               return (
                 <div
                   key={group.id}
-                  onClick={() =>
-                    toggleGroupMutation.mutate({
-                      groupId: group.id,
-                      action: isSelected ? 'remove' : 'add',
-                    })
-                  }
-                  className={`flex cursor-pointer items-center justify-between rounded-xl border p-3 transition-colors ${
+                  className={`flex items-center justify-between rounded-xl border p-3 ${
                     isSelected
                       ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-                      : 'border-neutral-800 bg-neutral-950/60 text-neutral-300 hover:border-neutral-700'
+                      : 'border-neutral-800 bg-neutral-950/60 text-neutral-300'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleGroup(group.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  >
                     <span
-                      className="h-3 w-3 rounded-full"
+                      className="h-3 w-3 shrink-0 rounded-full"
                       style={{ backgroundColor: group.color || '#10b981' }}
                     />
-                    <span className="text-sm font-medium">{group.name}</span>
-                  </div>
-                  {isSelected && <Check className="h-4 w-4 text-emerald-400" />}
+                    <span className="truncate text-sm font-medium">{group.name}</span>
+                    {isSelected && <Check className="h-4 w-4 shrink-0 text-emerald-400" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteGroup(group.id, group.name)}
+                    aria-label={`Excluir grupo ${group.name}`}
+                    className="ml-2 rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-rose-400"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               );
             })
           )}
         </div>
 
-        {/* Formulário para novo grupo */}
         <div className="mt-5 border-t border-neutral-800 pt-4">
           {!isCreating ? (
             <button
@@ -163,21 +166,24 @@ export function GroupModal({ item, isOpen, onClose }: GroupModalProps) {
                 type="text"
                 placeholder='Ex: "Jogos zerados em 2026", "Animes favoritos"'
                 value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
+                onChange={(event) => setNewGroupName(event.target.value)}
                 className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 autoFocus
               />
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  {PRESET_COLORS.map((c) => (
+                  {PRESET_COLORS.map((color) => (
                     <button
-                      key={c}
+                      key={color}
                       type="button"
-                      onClick={() => setSelectedColor(c)}
+                      aria-label={`Selecionar cor ${color}`}
+                      onClick={() => setSelectedColor(color)}
                       className={`h-5 w-5 rounded-full transition-transform ${
-                        selectedColor === c ? 'scale-125 ring-2 ring-white' : 'opacity-70 hover:opacity-100'
+                        selectedColor === color
+                          ? 'scale-125 ring-2 ring-white'
+                          : 'opacity-70 hover:opacity-100'
                       }`}
-                      style={{ backgroundColor: c }}
+                      style={{ backgroundColor: color }}
                     />
                   ))}
                 </div>
@@ -191,10 +197,10 @@ export function GroupModal({ item, isOpen, onClose }: GroupModalProps) {
                   </button>
                   <button
                     type="submit"
-                    disabled={!newGroupName.trim() || createGroupMutation.isPending}
+                    disabled={!newGroupName.trim() || isSaving}
                     className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
                   >
-                    {createGroupMutation.isPending ? 'Criando...' : 'Salvar Grupo'}
+                    {isSaving ? 'Criando...' : 'Salvar Grupo'}
                   </button>
                 </div>
               </div>

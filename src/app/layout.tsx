@@ -4,6 +4,7 @@ import './globals.css';
 import Providers from '@/components/Providers';
 import Link from 'next/link';
 import { Library, Search, Layers } from 'lucide-react';
+import { SaveFileStatus } from '@/components/SaveFileStatus';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -27,22 +28,25 @@ export default function RootLayout({
                 <Layers className="h-6 w-6" />
                 <span>OmniLog</span>
               </Link>
-              <nav className="flex items-center gap-4 text-sm font-medium">
-                <Link
-                  href="/"
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors"
-                >
-                  <Library className="h-4 w-4" />
-                  Biblioteca
-                </Link>
-                <Link
-                  href="/search"
-                  className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-white hover:bg-emerald-500 transition-colors shadow-sm"
-                >
-                  <Search className="h-4 w-4" />
-                  Buscar Mídia
-                </Link>
-              </nav>
+              <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-4">
+                <nav className="flex items-center gap-2 text-sm font-medium sm:gap-4">
+                  <Link
+                    href="/"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-white"
+                  >
+                    <Library className="h-4 w-4" />
+                    Biblioteca
+                  </Link>
+                  <Link
+                    href="/search"
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-white shadow-sm transition-colors hover:bg-emerald-500"
+                  >
+                    <Search className="h-4 w-4" />
+                    Buscar Mídia
+                  </Link>
+                </nav>
+                <SaveFileStatus />
+              </div>
             </div>
           </header>
           <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">{children}</main>

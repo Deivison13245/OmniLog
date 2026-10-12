@@ -24,7 +24,8 @@ O **OmniLog** é um aplicativo web pessoal desenvolvido para registrar, cataloga
 - **Coleções & Grupos Customizados**:
   - Crie grupos personalizados com paleta de cores (ex: *"Zerar em 2026"*, *"Favoritos"*) e vincule mídias a múltiplos grupos.
 - **Backup e Restauração Local**:
-  - Exporte e importe um snapshot completo em arquivo `.json` a qualquer momento para garantir a segurança dos seus dados.
+  - Exporte e importe `omnilog-save.json`; quando disponível, vincule o arquivo para gravação automática após alterações.
+  - A biblioteca fica no IndexedDB do navegador, sem enviar registros pessoais ao servidor.
 
 ---
 
@@ -35,27 +36,15 @@ O **OmniLog** é um aplicativo web pessoal desenvolvido para registrar, cataloga
 | **Framework Fullstack** | Next.js 16 (App Router) + React 19 |
 | **Linguagem** | TypeScript |
 | **Estilização** | Tailwind CSS + Lucide Icons (Tema Escuro Nativo) |
-| **Banco de Dados Local** | SQLite via `better-sqlite3` (modo WAL) |
-| **ORM** | Drizzle ORM |
-| **Gerenciamento de Estado & Cache** | TanStack React Query v5 |
+| **Armazenamento local** | IndexedDB via Dexie |
+| **Estado de busca** | TanStack React Query v5 |
 | **Validação de Schemas** | Zod |
-| **Rate Limiter** | `p-limit` |
+| **Limite de busca** | Memória do processo por endereço IP |
 | **Testes Automatizados** | Vitest |
 
 ---
 
-## 3. Modelo de Banco de Dados
-
-O banco SQLite é inicializado automaticamente na pasta `./data/omnilog.db` com as seguintes tabelas:
-
-- `media`: Armazena metadados e cache das mídias buscadas externamente.
-- `library_items`: Itens salvos na sua biblioteca (status, nota, resenha e datas).
-- `groups`: Coleções personalizadas criadas por você.
-- `library_item_groups`: Relação muitos-para-muitos entre itens da biblioteca e grupos.
-
----
-
-## 4. Provedores de Dados Externos
+## 3. Provedores de Dados Externos
 
 - **IGDB (Twitch)**: Base de dados de Jogos.
 - **HowLongToBeat**: Estatísticas de tempo para zerar e platinar jogos.
@@ -65,9 +54,9 @@ O banco SQLite é inicializado automaticamente na pasta `./data/omnilog.db` com 
 
 ---
 
-## 5. Configuração e Variáveis de Ambiente
+## 4. Configuração e Variáveis de Ambiente
 
-Crie um arquivo `.env.local` na raiz do projeto com as chaves:
+Copie `.env.example` para `.env.local` e preencha as chaves opcionais:
 
 ```env
 # IGDB (Twitch Developer Console)
@@ -81,18 +70,14 @@ TMDB_API_KEY=
 # Google Books (Opcional - Fallback)
 GOOGLE_BOOKS_API_KEY=
 
-# Banco SQLite local
-DATABASE_PATH=./data/omnilog.db
-
-# Dias de retenção de cache
-CACHE_TTL_DAYS=30
 ```
 
 > **Nota:** AniList e Open Library são APIs públicas e funcionam imediatamente sem necessidade de chaves.
+> A biblioteca e os saves são locais ao navegador. Use a exportação para manter uma cópia portável ou sincronizada.
 
 ---
 
-## 6. Como Executar o Projeto
+## 5. Como Executar o Projeto
 
 Instale as dependências:
 ```bash

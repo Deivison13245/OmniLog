@@ -1,8 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { LibraryItem, LibraryStatus, MediaType, Group } from '@/lib/types';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { LibraryStatus, MediaType } from '@/lib/types';
+import {
+  deleteLibraryItem,
+  libraryDb,
+  readSetting,
+  updateLibraryItem,
+  useAllLibraryItems,
+  useLibraryGroups,
+  useLibraryItems,
+  writeSetting,
+} from '@/lib/library-db';
+import { chooseOpenSaveFile, importSaveFile, readSaveFile } from '@/lib/save-file';
 import { LibraryCard } from '@/components/LibraryCard';
 import { LibraryList } from '@/components/LibraryList';
 import Link from 'next/link';
@@ -20,7 +31,6 @@ import {
 import { BackupModal } from '@/components/BackupModal';
 
 export default function LibraryPage() {
-  const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -28,84 +38,148 @@ export default function LibraryPage() {
   const [sortBy, setSortBy] = useState<'added_at' | 'title'>('added_at');
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
-
-  // Buscar lista de grupos para o filtro
-  const { data: groups = [] } = useQuery<Group[]>({
-    queryKey: ['groups'],
-    queryFn: async () => {
-      const res = await fetch('/api/groups');
-      if (!res.ok) return [];
-      return res.json();
-    },
+  const [isLoadingProgress, setIsLoadingProgress] = useState(false);
+  const [dataError, setDataError] = useState<string>();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const items = useLibraryItems({
+    status: filterStatus as LibraryStatus | 'all',
+    type: filterType as MediaType | 'all',
+    groupId: filterGroup === 'all' ? 'all' : Number(filterGroup),
+    sortBy,
+    sortDir,
   });
-
-  // Buscar itens da biblioteca
-  const { data: items = [], isLoading } = useQuery<LibraryItem[]>({
-    queryKey: ['library', filterStatus, filterType, filterGroup, sortBy, sortDir],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (filterStatus !== 'all') params.set('status', filterStatus);
-      if (filterType !== 'all') params.set('type', filterType);
-      if (filterGroup !== 'all') params.set('groupId', filterGroup);
-      params.set('sort', sortBy);
-      params.set('dir', sortDir);
-
-      const res = await fetch(`/api/library?${params.toString()}`);
-      if (!res.ok) throw new Error('Falha ao carregar biblioteca');
-      return res.json();
-    },
-  });
-
-  // Atualizar item (status, rating, review)
-  const updateMutation = useMutation({
-    mutationFn: async ({
-      id,
-      data,
-    }: {
-      id: number;
-      data: { status?: LibraryStatus; rating?: number | null; review?: string | null };
-    }) => {
-      const res = await fetch(`/api/library/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error('Erro ao atualizar item');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['library'] });
-    },
-  });
-
-  // Remover item
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`/api/library/${id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Erro ao excluir item');
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['library'] });
-    },
-  });
+  const allItems = useAllLibraryItems();
+  const groups = useLibraryGroups();
+  const onboardingCompleted = useLiveQuery(
+    () => readSetting<boolean>('onboardingCompleted'),
+    []
+  );
 
   const handleUpdate = (
     id: number,
     data: { status?: LibraryStatus; rating?: number | null; review?: string | null }
   ) => {
-    updateMutation.mutate({ id, data });
+    updateLibraryItem(id, data).catch((error: unknown) => {
+      console.error('Falha ao atualizar item da biblioteca:', error);
+      setDataError('Não foi possível salvar as alterações do item.');
+    });
   };
 
   const handleDelete = (id: number) => {
     if (confirm('Deseja realmente remover este item da biblioteca?')) {
-      deleteMutation.mutate(id);
+      deleteLibraryItem(id).catch((error: unknown) => {
+        console.error('Falha ao remover item da biblioteca:', error);
+        setDataError('Não foi possível remover o item.');
+      });
     }
   };
 
+  const handleImportFile = async (file: File) => {
+    try {
+      setIsLoadingProgress(true);
+      setDataError(undefined);
+      const save = await readSaveFile(file);
+      const currentItems = await libraryDb.items.count();
+      const currentGroups = await libraryDb.groups.count();
+      if (
+        (currentItems > 0 || currentGroups > 0) &&
+        !confirm('Substituir toda a biblioteca e os grupos atuais pelo progresso deste arquivo?')
+      ) {
+        return;
+      }
+      await importSaveFile(save, 'replace');
+      await writeSetting('onboardingCompleted', true);
+    } catch (error: unknown) {
+      console.error('Falha ao carregar o arquivo de progresso:', error);
+      setDataError(error instanceof Error ? error.message : 'Não foi possível carregar o arquivo.');
+    } finally {
+      setIsLoadingProgress(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleLoadProgress = async () => {
+    try {
+      const file = await chooseOpenSaveFile();
+      if (file) {
+        await handleImportFile(file);
+        return;
+      }
+      fileInputRef.current?.click();
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      console.error('Falha ao abrir o seletor de arquivo:', error);
+      setDataError(error instanceof Error ? error.message : 'Não foi possível abrir o arquivo.');
+    }
+  };
+
+  if (!items || !allItems || !groups) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
+        <Loader2 className="mb-2 h-8 w-8 animate-spin text-emerald-500" />
+        <p className="text-sm">Carregando sua biblioteca local...</p>
+      </div>
+    );
+  }
+
+  if (allItems.length === 0 && groups.length === 0 && !onboardingCompleted) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center text-center">
+        <BookMarked className="mb-4 h-14 w-14 text-emerald-400" />
+        <h1 className="text-2xl font-bold text-white">Sua biblioteca começa aqui</h1>
+        <p className="mt-2 text-sm text-neutral-400">
+          Seus dados ficam neste navegador. Comece uma biblioteca nova ou carregue um save existente.
+        </p>
+        {dataError && (
+          <p role="alert" className="mt-4 rounded-lg bg-rose-500/10 px-4 py-2 text-sm text-rose-300">
+            {dataError}
+          </p>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void handleImportFile(file);
+          }}
+        />
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            disabled={isLoadingProgress}
+            onClick={() => {
+              writeSetting('onboardingCompleted', true).catch((error: unknown) => {
+                console.error('Falha ao iniciar biblioteca vazia:', error);
+                setDataError('Não foi possível iniciar uma biblioteca nova.');
+              });
+            }}
+            className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            Começar do zero
+          </button>
+          <button
+            type="button"
+            disabled={isLoadingProgress}
+            onClick={handleLoadProgress}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-700 px-5 py-3 text-sm font-semibold text-neutral-200 hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {isLoadingProgress ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Carregar progresso
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {dataError && (
+        <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">
+          {dataError}
+        </div>
+      )}
       {/* Top Banner / Stats */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -237,14 +311,7 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500 mb-2" />
-          <p className="text-sm">Carregando sua biblioteca...</p>
-        </div>
-      )}
-
-      {!isLoading && items.length === 0 && (
+      {items.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-800 py-16 text-center">
           <BookMarked className="h-12 w-12 text-neutral-600 mb-3" />
           <h3 className="text-base font-semibold text-neutral-200">Nenhum item encontrado</h3>
@@ -262,7 +329,7 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {!isLoading && items.length > 0 && (
+      {items.length > 0 && (
         <>
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-6">

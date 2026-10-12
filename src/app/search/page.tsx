@@ -1,18 +1,21 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { SearchBar } from '@/components/SearchBar';
 import { TypeTabs } from '@/components/TypeTabs';
 import { MediaCard } from '@/components/MediaCard';
-import { MediaItem, SearchFilter, SearchResponse, LibraryItem } from '@/lib/types';
+import { MediaItem, SearchFilter, SearchResponse } from '@/lib/types';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { addLibraryItem, useAllLibraryItems } from '@/lib/library-db';
 
 export default function SearchPage() {
-  const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [activeTab, setActiveTab] = useState<SearchFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [addingKey, setAddingKey] = useState<string>();
+  const [addError, setAddError] = useState<string>();
+  const libraryItems = useAllLibraryItems();
 
   // Busca na API
   const { data, isLoading, error } = useQuery<SearchResponse>({
@@ -20,41 +23,32 @@ export default function SearchPage() {
     queryFn: async () => {
       if (!searchTerm.trim()) return { items: [], failedSources: [] };
       const res = await fetch(`/api/search?q=${encodeURIComponent(searchTerm)}&filter=${activeTab}`);
-      if (!res.ok) throw new Error('Falha ao buscar itens');
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || 'Falha ao buscar itens.');
+      }
       return res.json();
     },
     enabled: !!searchTerm.trim(),
-  });
-
-  // Obter itens já existentes na biblioteca para marcar o botão
-  const { data: libraryItems } = useQuery<LibraryItem[]>({
-    queryKey: ['library'],
-    queryFn: async () => {
-      const res = await fetch('/api/library');
-      if (!res.ok) return [];
-      return res.json();
-    },
   });
 
   const libraryKeys = new Set(
     (libraryItems || []).map((li) => `${li.media.source}:${li.media.externalId}`)
   );
 
-  // Adicionar à biblioteca
-  const addMutation = useMutation({
-    mutationFn: async (item: MediaItem) => {
-      const res = await fetch('/api/library', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item),
-      });
-      if (!res.ok) throw new Error('Erro ao adicionar à biblioteca');
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['library'] });
-    },
-  });
+  const handleAdd = async (item: MediaItem) => {
+    const key = `${item.source}:${item.externalId}`;
+    try {
+      setAddingKey(key);
+      setAddError(undefined);
+      await addLibraryItem(item);
+    } catch (error: unknown) {
+      console.error('Falha ao adicionar item localmente:', error);
+      setAddError(error instanceof Error ? error.message : 'Não foi possível adicionar o item.');
+    } finally {
+      setAddingKey(undefined);
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +80,12 @@ export default function SearchPage() {
         }}
       />
 
+      {addError && (
+        <div role="alert" className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-300">
+          {addError}
+        </div>
+      )}
+
       {data?.failedSources && data.failedSources.length > 0 && (
         <div className="flex flex-col gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-300">
           <div className="flex items-center gap-2 font-semibold">
@@ -106,13 +106,13 @@ export default function SearchPage() {
       {isLoading && (
         <div className="flex flex-col items-center justify-center py-20 text-neutral-400">
           <Loader2 className="h-8 w-8 animate-spin text-emerald-500 mb-2" />
-          <p className="text-sm">Consultando fontes externas e cache local...</p>
+          <p className="text-sm">Consultando fontes externas...</p>
         </div>
       )}
 
       {error && (
         <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-center text-sm text-rose-300">
-          Ocorreu um erro ao realizar a busca. Tente novamente mais tarde.
+          {error instanceof Error ? error.message : 'Ocorreu um erro ao realizar a busca. Tente novamente mais tarde.'}
         </div>
       )}
 
@@ -131,8 +131,8 @@ export default function SearchPage() {
                 key={`${item.source}-${item.externalId}`}
                 item={item}
                 inLibrary={isSaved}
-                onAdd={(m) => addMutation.mutate(m)}
-                isAdding={addMutation.isPending && addMutation.variables?.externalId === item.externalId}
+                onAdd={(m) => void handleAdd(m)}
+                isAdding={addingKey === `${item.source}:${item.externalId}`}
               />
             );
           })}

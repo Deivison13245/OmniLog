@@ -5,7 +5,6 @@ import { searchAniList } from './providers/anilist';
 import { searchOpenLibrary } from './providers/openlibrary';
 import { searchGoogleBooks } from './providers/googlebooks';
 import { fetchHLTBPlaytime } from './providers/hltb';
-import { saveMediaCache } from './cache';
 
 export async function orchestrateSearch(query: string, filter: SearchFilter = 'all'): Promise<SearchResponse> {
   const items: MediaItem[] = [];
@@ -113,13 +112,6 @@ export async function orchestrateSearch(query: string, filter: SearchFilter = 'a
   }
 
   await Promise.allSettled(tasks);
-
-  // Salvar em cache em segundo plano sem bloquear a resposta
-  for (const item of items) {
-    saveMediaCache(item).catch((err) => {
-      console.warn('Error saving to cache:', err);
-    });
-  }
 
   return {
     items,
