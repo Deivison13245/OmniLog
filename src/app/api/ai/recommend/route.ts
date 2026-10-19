@@ -18,8 +18,8 @@ const requestSchema = z.object({
   type: z.enum(['all', 'game', 'movie', 'tv', 'anime', 'manga', 'book']).default('all'),
   count: z.number().min(5).max(10).default(6),
   note: z.string().max(140).optional(),
-  consent: z.literal(true, {
-    errorMap: () => ({ message: 'É necessário consentir com o processamento pela IA.' }),
+  consent: z.boolean().refine((val) => val === true, {
+    message: 'É necessário consentir com o processamento pela IA.',
   }),
   apiKey: z.string().optional(),
 });
