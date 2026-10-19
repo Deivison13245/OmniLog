@@ -1,9 +1,9 @@
-import { MediaItem } from '../types';
+import type { MediaDetails, MediaItem, RelatedWork, StreamingProvider } from '../types';
 import { tmdbLimiter } from '../rate-limit';
 
 interface TMDBResult {
   id: number;
-  media_type: 'movie' | 'tv';
+  media_type?: 'movie' | 'tv';
   title?: string;
   name?: string;
   release_date?: string;
@@ -133,6 +133,154 @@ export async function searchTMDB(query: string): Promise<MediaItem[]> {
       return items;
     } finally {
       clearTimeout(timeout);
+    }
+  });
+}
+
+/**
+ * Busca detalhes enriquecidos da obra no TMDB (RF-T2, RF-T5, RF-T6)
+ */
+export async function fetchTMDBDetails(
+  id: string,
+  type: 'movie' | 'tv',
+  region = 'BR'
+): Promise<Partial<MediaDetails> | null> {
+  const token = process.env.TMDB_READ_TOKEN;
+  if (!token) return null;
+
+  return tmdbLimiter(async () => {
+    try {
+      const url = `https://api.themoviedb.org/3/${type}/${id}?append_to_response=watch/providers&language=pt-BR`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      const genres = Array.isArray(data.genres)
+        ? data.genres.map((g: { name: string }) => g.name)
+        : [];
+
+      // Provedores de Streaming por JustWatch
+      const providersData = data['watch/providers']?.results?.[region];
+      let streaming: MediaDetails['streaming'] | undefined;
+
+      if (providersData) {
+        const mapProvider = (p: { provider_id: number; provider_name: string; logo_path?: string }): StreamingProvider => ({
+          id: p.provider_id,
+          name: p.provider_name,
+          logoPath: p.logo_path ? `https://image.tmdb.org/t/p/original${p.logo_path}` : undefined,
+        });
+
+        streaming = {
+          region,
+          fetchedAt: new Date().toISOString(),
+          tmdbLink: providersData.link,
+          flatrate: (providersData.flatrate || []).map(mapProvider),
+          rent: (providersData.rent || []).map(mapProvider),
+          buy: (providersData.buy || []).map(mapProvider),
+        };
+      }
+
+      // Coleção de Filmes
+      let collection: MediaDetails['collection'] | undefined;
+      if (type === 'movie' && data.belongs_to_collection?.id) {
+        try {
+          const colRes = await fetch(
+            `https://api.themoviedb.org/3/collection/${data.belongs_to_collection.id}?language=pt-BR`,
+            { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+          );
+          if (colRes.ok) {
+            const colData = await colRes.json();
+            const parts: RelatedWork[] = (colData.parts || []).map(
+              (p: { id: number; title: string; release_date?: string; poster_path?: string }) => ({
+                source: 'tmdb',
+                externalId: p.id.toString(),
+                type: 'movie',
+                title: p.title,
+                year: p.release_date ? parseInt(p.release_date.substring(0, 4), 10) : null,
+                coverUrl: p.poster_path ? `https://image.tmdb.org/t/p/w500${p.poster_path}` : null,
+              })
+            );
+            parts.sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
+
+            collection = {
+              id: data.belongs_to_collection.id,
+              name: data.belongs_to_collection.name,
+              works: parts,
+            };
+          }
+        } catch (err) {
+          console.warn('Erro ao carregar coleção TMDB:', err);
+        }
+      }
+
+      return {
+        synopsis: data.overview || undefined,
+        genres,
+        streaming,
+        collection,
+      };
+    } catch {
+      return null;
+    }
+  });
+}
+
+/**
+ * Busca obras em alta ou similares no TMDB (RF-D7)
+ */
+export async function fetchTMDBDiscover(
+  kind: 'trending' | 'similar',
+  type: 'movie' | 'tv',
+  id?: string
+): Promise<MediaItem[]> {
+  const token = process.env.TMDB_READ_TOKEN;
+  if (!token) return [];
+
+  return tmdbLimiter(async () => {
+    try {
+      let url = '';
+      if (kind === 'trending') {
+        url = `https://api.themoviedb.org/3/trending/${type}/week?language=pt-BR`;
+      } else if (kind === 'similar' && id) {
+        url = `https://api.themoviedb.org/3/${type}/${id}/recommendations?language=pt-BR&page=1`;
+      } else {
+        return [];
+      }
+
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      });
+      if (!res.ok) return [];
+
+      const data = await res.json();
+      const results: TMDBResult[] = data.results || [];
+
+      return results.slice(0, 10).map((item) => {
+        const title = item.title || item.name || 'Sem título';
+        const dateStr = item.release_date || item.first_air_date;
+        let year: number | null = null;
+        if (dateStr) {
+          const parsed = parseInt(dateStr.substring(0, 4), 10);
+          if (!isNaN(parsed)) year = parsed;
+        }
+
+        return {
+          source: 'tmdb',
+          externalId: item.id.toString(),
+          type,
+          title,
+          year,
+          coverUrl: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
+          metadata: {
+            overview: item.overview,
+            rating: item.vote_average,
+          },
+        };
+      });
+    } catch {
+      return [];
     }
   });
 }

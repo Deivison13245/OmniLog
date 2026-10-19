@@ -5,7 +5,7 @@ import { getLibraryItems, importLibraryData, libraryDb, readSetting } from './li
 import type { Group, LibraryItem, MediaItem } from './types';
 
 export const SAVE_FILE_NAME = 'omnilog-save.json';
-export const SAVE_FILE_VERSION = 2;
+export const SAVE_FILE_VERSION = 3;
 const sources = ['igdb', 'tmdb', 'anilist', 'openlibrary', 'googlebooks'] as const;
 const mediaTypes = ['game', 'movie', 'tv', 'anime', 'manga', 'book'] as const;
 const statuses = ['backlog', 'in_progress', 'completed', 'dropped'] as const;
@@ -36,6 +36,14 @@ const itemSchema = z.object({
   review: z.string().nullable().optional(),
   addedAt: z.string().optional(),
   updatedAt: z.string().optional(),
+  startedAt: z.string().optional(),
+  completedAt: z.string().optional(),
+  completedAtEstimated: z.boolean().optional(),
+  genres: z.array(z.string()).optional(),
+  progress: z.number().optional(),
+  totalProgress: z.number().optional(),
+  playtimeHours: z.number().optional(),
+  hltbOverrideId: z.number().optional(),
   media: mediaSchema,
   groups: z.array(groupSchema).optional(),
 });

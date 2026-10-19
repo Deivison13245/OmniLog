@@ -4,7 +4,8 @@ import React from 'react';
 import { LibraryItem, LibraryStatus } from '@/lib/types';
 import { MediaBadge } from './MediaBadge';
 import { MediaMetaStats } from './MediaMetaStats';
-import { Star, Trash2, Folder, ImageOff } from 'lucide-react';
+import Link from 'next/link';
+import { Star, Trash2, Folder, ImageOff, ExternalLink } from 'lucide-react';
 import { GroupModal } from './GroupModal';
 
 interface LibraryListProps {
@@ -34,16 +35,19 @@ export function LibraryList({ items, onUpdate, onDelete }: LibraryListProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-800/60">
-            {items.map((item) => (
+            {items.map((item) => {
+              const detailsHref = `/media/${item.media.source}/${item.media.externalId}?type=${item.media.type}&title=${encodeURIComponent(item.media.title)}`;
+
+              return (
               <tr key={item.id} className="hover:bg-neutral-800/30 transition-colors">
                 <td className="py-3 px-4">
-                  <div className="flex items-center gap-3">
+                  <Link href={detailsHref} className="flex items-center gap-3 group">
                     <div className="h-14 w-10 shrink-0 overflow-hidden rounded-lg bg-neutral-950 border border-neutral-800">
                       {item.media.coverUrl ? (
                         <img
                           src={item.media.coverUrl}
                           alt={item.media.title}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-cover group-hover:scale-105 transition-transform"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-neutral-600">
@@ -52,9 +56,11 @@ export function LibraryList({ items, onUpdate, onDelete }: LibraryListProps) {
                       )}
                     </div>
                     <div>
-                      <span className="font-semibold text-neutral-100 line-clamp-1">{item.media.title}</span>
+                      <span className="font-semibold text-neutral-100 group-hover:text-emerald-400 line-clamp-1 transition-colors">
+                        {item.media.title}
+                      </span>
                     </div>
-                  </div>
+                  </Link>
                 </td>
                 <td className="py-3 px-4">
                   <MediaBadge type={item.media.type} />
@@ -139,7 +145,8 @@ export function LibraryList({ items, onUpdate, onDelete }: LibraryListProps) {
                   </button>
                 </td>
               </tr>
-            ))}
+            );
+          })}
           </tbody>
         </table>
       </div>

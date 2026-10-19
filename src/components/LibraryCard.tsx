@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { LibraryItem, LibraryStatus } from '@/lib/types';
 import { MediaBadge } from './MediaBadge';
 import { MediaMetaStats } from './MediaMetaStats';
-import { Star, Trash2, Edit3, ImageOff, Folder } from 'lucide-react';
+import Link from 'next/link';
+import { Star, Trash2, Edit3, ImageOff, Folder, ExternalLink } from 'lucide-react';
 import { GroupModal } from './GroupModal';
 
 interface LibraryCardProps {
@@ -27,6 +28,8 @@ export function LibraryCard({ item, onUpdate, onDelete }: LibraryCardProps) {
   const [rating, setRating] = useState<number>(item.rating || 0);
   const [review, setReview] = useState<string>(item.review || '');
 
+  const detailsHref = `/media/${item.media.source}/${item.media.externalId}?type=${item.media.type}&title=${encodeURIComponent(item.media.title)}`;
+
   const handleSave = () => {
     onUpdate(item.id, {
       rating: rating > 0 ? rating : null,
@@ -39,7 +42,7 @@ export function LibraryCard({ item, onUpdate, onDelete }: LibraryCardProps) {
     <>
       <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-neutral-800/80 bg-neutral-900/60 transition-all duration-300 hover:border-neutral-700 hover:shadow-xl">
         {/* Pôster com proporção 2:3 rígida para evitar distorção */}
-        <div className="relative aspect-[2/3] w-full overflow-hidden bg-neutral-950">
+        <Link href={detailsHref} className="relative aspect-[2/3] w-full overflow-hidden bg-neutral-950 block">
           {item.media.coverUrl && !imgError ? (
             <img
               src={item.media.coverUrl}
@@ -63,30 +66,38 @@ export function LibraryCard({ item, onUpdate, onDelete }: LibraryCardProps) {
 
           <div className="absolute top-2.5 right-2.5 z-10 flex gap-1.5 opacity-90 transition-opacity group-hover:opacity-100">
             <button
-              onClick={() => setIsGroupModalOpen(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                setIsGroupModalOpen(true);
+              }}
               title="Gerenciar Grupos"
               className="rounded-lg bg-neutral-950/80 p-1.5 text-neutral-300 hover:text-emerald-400 backdrop-blur-md transition-colors border border-white/10"
             >
               <Folder className="h-3.5 w-3.5" />
             </button>
             <button
-              onClick={() => onDelete(item.id)}
+              onClick={(e) => {
+                e.preventDefault();
+                onDelete(item.id);
+              }}
               title="Remover da biblioteca"
               className="rounded-lg bg-neutral-950/80 p-1.5 text-neutral-300 hover:text-rose-400 backdrop-blur-md transition-colors border border-white/10"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
+        </Link>
 
         <div className="flex flex-1 flex-col justify-between p-3.5 gap-2">
           <div>
-            <h3
-              className="line-clamp-2 text-sm font-semibold text-neutral-100 group-hover:text-emerald-400 transition-colors leading-snug"
-              title={item.media.title}
-            >
-              {item.media.title}
-            </h3>
+            <Link href={detailsHref} className="block">
+              <h3
+                className="line-clamp-2 text-sm font-semibold text-neutral-100 group-hover:text-emerald-400 transition-colors leading-snug"
+                title={item.media.title}
+              >
+                {item.media.title}
+              </h3>
+            </Link>
             <p className="mt-1 text-xs text-neutral-400 font-medium">
               {item.media.year ? item.media.year : 'Ano n/d'}
             </p>

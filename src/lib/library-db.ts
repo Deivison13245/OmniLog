@@ -2,7 +2,15 @@
 
 import Dexie, { type Table } from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
-import type { Group, LibraryItem, LibraryStatus, MediaItem } from './types';
+import type {
+  AiResult,
+  Group,
+  LibraryItem,
+  LibraryStatus,
+  MediaDetails,
+  MediaItem,
+  MediaSource,
+} from './types';
 
 interface Setting {
   key: string;
@@ -12,6 +20,8 @@ interface Setting {
 class OmniLogDatabase extends Dexie {
   items!: Table<LibraryItem, number, Omit<LibraryItem, 'id'>>;
   groups!: Table<Group, number, Omit<Group, 'id'>>;
+  details!: Table<MediaDetails, string>;
+  aiResults!: Table<AiResult, number, Omit<AiResult, 'id'>>;
   settings!: Table<Setting, string>;
 
   constructor() {
@@ -20,6 +30,22 @@ class OmniLogDatabase extends Dexie {
       items: '++id, status, addedAt, updatedAt',
       groups: '++id, name, createdAt',
       settings: '&key',
+    });
+
+    this.version(2).stores({
+      items: '++id, status, addedAt, updatedAt, completedAt',
+      groups: '++id, name, createdAt',
+      details: '[source+externalId], fetchedAt',
+      aiResults: '++id, createdAt',
+      settings: '&key',
+    }).upgrade((tx) => {
+      // Migração suave para preencher completedAt estimado se já estava concluído
+      return tx.table('items').toCollection().modify((item: LibraryItem) => {
+        if (item.status === 'completed' && !item.completedAt) {
+          item.completedAt = item.updatedAt || item.addedAt;
+          item.completedAtEstimated = true;
+        }
+      });
     });
   }
 }
@@ -109,7 +135,20 @@ export function useLibraryItem(id: number) {
   );
 }
 
-export async function addLibraryItem(media: MediaItem): Promise<number> {
+export function useLibraryItemByMedia(source: MediaSource, externalId: string) {
+  return useLiveQuery(
+    async () => {
+      const items = await getLibraryItems();
+      return items.find((item) => item.media.source === source && item.media.externalId === externalId);
+    },
+    [source, externalId]
+  );
+}
+
+export async function addLibraryItem(
+  media: MediaItem,
+  initialStatus: LibraryStatus = 'backlog'
+): Promise<number> {
   return libraryDb.transaction('rw', libraryDb.items, async () => {
     const existing = await libraryDb.items
       .filter(
@@ -120,16 +159,34 @@ export async function addLibraryItem(media: MediaItem): Promise<number> {
     if (existing) return existing.id;
 
     const now = new Date().toISOString();
-    const item = {
+    // Extrai gêneros se já disponíveis
+    const genres = Array.isArray(media.metadata?.genres)
+      ? (media.metadata.genres as string[])
+      : undefined;
+
+    // Extrai totalProgress inicial baseado no tipo de mídia
+    let totalProgress: number | undefined;
+    if (media.metadata) {
+      if (typeof media.metadata.episodes === 'number') totalProgress = media.metadata.episodes;
+      else if (typeof media.metadata.chapters === 'number') totalProgress = media.metadata.chapters;
+      else if (typeof media.metadata.pageCount === 'number') totalProgress = media.metadata.pageCount;
+    }
+
+    const item: Omit<LibraryItem, 'id'> = {
       mediaId: 0,
-      status: 'backlog',
+      status: initialStatus,
       rating: null,
       review: null,
       addedAt: now,
       updatedAt: now,
+      startedAt: initialStatus === 'in_progress' ? now : undefined,
+      completedAt: initialStatus === 'completed' ? now : undefined,
+      genres,
+      progress: 0,
+      totalProgress,
       media: { ...media },
       groups: [],
-    } satisfies Omit<LibraryItem, 'id'>;
+    };
     const id = await libraryDb.items.add(item);
     await libraryDb.items.update(id, { mediaId: id });
     return id;
@@ -138,11 +195,52 @@ export async function addLibraryItem(media: MediaItem): Promise<number> {
 
 export async function updateLibraryItem(
   id: number,
-  update: Partial<Pick<LibraryItem, 'status' | 'rating' | 'review'>>
+  update: Partial<Omit<LibraryItem, 'id' | 'media'>>
 ): Promise<void> {
   const item = await libraryDb.items.get(id);
   if (!item) throw new Error('Item não encontrado na biblioteca.');
-  await libraryDb.items.update(id, { ...update, updatedAt: new Date().toISOString() });
+
+  const now = new Date().toISOString();
+  const nextUpdate: Partial<LibraryItem> = {
+    ...update,
+    updatedAt: now,
+  };
+
+  if (update.status === 'completed' && !item.completedAt) {
+    nextUpdate.completedAt = now;
+  }
+  if (update.status === 'in_progress' && !item.startedAt) {
+    nextUpdate.startedAt = now;
+  }
+
+  await libraryDb.items.update(id, nextUpdate);
+}
+
+export async function incrementItemProgress(id: number): Promise<void> {
+  const item = await libraryDb.items.get(id);
+  if (!item) throw new Error('Item não encontrado.');
+
+  const current = item.progress ?? 0;
+  const next = current + 1;
+  const now = new Date().toISOString();
+
+  const patch: Partial<LibraryItem> = {
+    progress: next,
+    updatedAt: now,
+  };
+
+  if (item.status === 'backlog') {
+    patch.status = 'in_progress';
+    if (!item.startedAt) patch.startedAt = now;
+  }
+
+  // Se completou a contagem total conhecida
+  if (item.totalProgress && next >= item.totalProgress && item.status !== 'completed') {
+    patch.status = 'completed';
+    patch.completedAt = now;
+  }
+
+  await libraryDb.items.update(id, patch);
 }
 
 export async function deleteLibraryItem(id: number): Promise<void> {
@@ -223,6 +321,56 @@ export async function writeSetting(key: string, value: unknown): Promise<void> {
   await libraryDb.settings.put({ key, value });
 }
 
+// ---- Cache de Detalhes da Obra (MediaDetails) ----
+export async function getCachedMediaDetails(
+  source: MediaSource,
+  externalId: string
+): Promise<MediaDetails | undefined> {
+  try {
+    const entry = await libraryDb.details.where('[source+externalId]').equals([source, externalId]).first();
+    if (!entry) return undefined;
+
+    // Verificar TTL: 30 dias para dados gerais
+    const ageMs = Date.now() - new Date(entry.fetchedAt).getTime();
+    if (ageMs > 30 * 24 * 60 * 60 * 1000) {
+      return undefined;
+    }
+    return entry;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveCachedMediaDetails(details: MediaDetails): Promise<void> {
+  try {
+    await libraryDb.details.put(details);
+  } catch (err) {
+    console.warn('Falha ao salvar detalhes no cache local:', err);
+  }
+}
+
+// ---- Cache de Resultados da IA ----
+export async function getLatestAiResult(): Promise<AiResult | undefined> {
+  try {
+    const list = await libraryDb.aiResults.orderBy('createdAt').reverse().limit(1).toArray();
+    if (list.length === 0) return undefined;
+    const latest = list[0];
+    // Validade de 24 horas
+    const ageMs = Date.now() - new Date(latest.createdAt).getTime();
+    if (ageMs > 24 * 60 * 60 * 1000) {
+      return undefined;
+    }
+    return latest;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveAiResult(result: Omit<AiResult, 'id'>): Promise<number> {
+  return libraryDb.aiResults.add(result);
+}
+
+// ---- Importação e Exportação ----
 export async function importLibraryData(
   save: { items: LibraryItem[]; groups: Group[] },
   mode: 'replace' | 'merge'

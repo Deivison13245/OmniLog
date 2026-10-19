@@ -27,6 +27,7 @@ import {
   Loader2,
   Folder,
   HardDrive,
+  BarChart3,
 } from 'lucide-react';
 import { BackupModal } from '@/components/BackupModal';
 
@@ -189,14 +190,22 @@ export default function LibraryPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm font-medium text-neutral-300 hover:border-neutral-700 hover:text-white transition-colors"
+            title="Ver Métricas e Recomendações"
+          >
+            <BarChart3 className="h-4 w-4 text-emerald-400" />
+            Dashboard
+          </Link>
+
           <button
             type="button"
             onClick={() => setIsBackupModalOpen(true)}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900 px-3.5 py-2.5 text-sm font-medium text-neutral-300 hover:border-neutral-700 hover:text-white transition-colors"
             title="Backup e Segurança dos Dados"
           >
-            <HardDrive className="h-4 w-4 text-emerald-400" />
+            <HardDrive className="h-4 w-4 text-neutral-400" />
             Backup Local
           </button>
 
