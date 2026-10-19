@@ -6,8 +6,6 @@ import { fetchAniListDetails } from '@/lib/providers/anilist';
 import { fetchHLTBTimeToBeat } from '@/lib/providers/hltb';
 import type { MediaDetails, MediaSource, MediaType } from '@/lib/types';
 
-export const dynamic = 'force-dynamic';
-
 const querySchema = z.object({
   source: z.enum(['igdb', 'tmdb', 'anilist', 'openlibrary', 'googlebooks']),
   id: z.string().min(1),
@@ -20,7 +18,7 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const searchParams = request.nextUrl.searchParams;
     const parsed = querySchema.safeParse({
       source: searchParams.get('source'),
       id: searchParams.get('id'),
@@ -76,6 +74,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'digest' in error) {
+      throw error;
+    }
     console.error('Erro na rota /api/details:', error);
     return NextResponse.json(
       { error: { code: 'INTERNAL_ERROR', message: 'Falha ao buscar detalhes da obra.' } },
