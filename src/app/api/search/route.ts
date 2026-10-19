@@ -3,6 +3,8 @@ import { orchestrateSearch } from '@/lib/search';
 import { SearchFilter } from '@/lib/types';
 import { limitRequestsByIp } from '@/lib/rate-limit';
 
+export const dynamic = 'force-dynamic';
+
 const validFilters = new Set<SearchFilter>(['all', 'game', 'video', 'anime', 'manga', 'book']);
 
 export async function GET(request: NextRequest) {

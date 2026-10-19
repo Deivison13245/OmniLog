@@ -5,6 +5,8 @@ import { fetchIGDBDiscover } from '@/lib/providers/igdb';
 import { fetchAniListDiscover } from '@/lib/providers/anilist';
 import type { MediaItem } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 const discoverSchema = z.object({
   kind: z.enum(['trending', 'similar']).default('trending'),
   type: z.enum(['game', 'movie', 'tv', 'anime', 'manga', 'book']).default('game'),

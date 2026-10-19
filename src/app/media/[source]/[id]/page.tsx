@@ -38,7 +38,7 @@ import {
 } from '@/lib/library-db';
 import { MediaBadge } from '@/components/MediaBadge';
 
-export default function MediaDetailsPage() {
+function MediaDetailsContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -748,5 +748,20 @@ export default function MediaDetailsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MediaDetailsPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center py-24 text-neutral-400">
+          <Loader2 className="mb-2 h-8 w-8 animate-spin text-emerald-500" />
+          <p className="text-sm">Carregando detalhes da obra...</p>
+        </div>
+      }
+    >
+      <MediaDetailsContent />
+    </React.Suspense>
   );
 }

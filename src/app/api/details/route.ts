@@ -6,6 +6,8 @@ import { fetchAniListDetails } from '@/lib/providers/anilist';
 import { fetchHLTBTimeToBeat } from '@/lib/providers/hltb';
 import type { MediaDetails, MediaSource, MediaType } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 const querySchema = z.object({
   source: z.enum(['igdb', 'tmdb', 'anilist', 'openlibrary', 'googlebooks']),
   id: z.string().min(1),
