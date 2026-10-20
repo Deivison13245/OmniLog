@@ -215,8 +215,18 @@ export async function fetchTMDBDetails(
         }
       }
 
+      const posterPath: string | undefined = data.poster_path ?? undefined;
       return {
         synopsis: data.overview || undefined,
+        title: (data.title || data.name) ?? undefined,
+        year: data.release_date
+          ? parseInt(data.release_date.substring(0, 4), 10) || undefined
+          : data.first_air_date
+          ? parseInt(data.first_air_date.substring(0, 4), 10) || undefined
+          : undefined,
+        coverUrl: posterPath
+          ? `https://image.tmdb.org/t/p/w500${posterPath}`
+          : undefined,
         genres,
         streaming,
         collection,
