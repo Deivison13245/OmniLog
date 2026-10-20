@@ -28,7 +28,8 @@ export function LibraryCard({ item, onUpdate, onDelete }: LibraryCardProps) {
   const [rating, setRating] = useState<number>(item.rating || 0);
   const [review, setReview] = useState<string>(item.review || '');
 
-  const detailsHref = `/media/${item.media.source}/${item.media.externalId}?type=${item.media.type}&title=${encodeURIComponent(item.media.title)}`;
+  const coverParam = item.media.coverUrl ? `&cover=${encodeURIComponent(item.media.coverUrl)}` : '';
+  const detailsHref = `/media/${item.media.source}/${item.media.externalId}?type=${item.media.type}&title=${encodeURIComponent(item.media.title)}${coverParam}`;
 
   const handleSave = () => {
     onUpdate(item.id, {

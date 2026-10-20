@@ -36,7 +36,8 @@ export function LibraryList({ items, onUpdate, onDelete }: LibraryListProps) {
           </thead>
           <tbody className="divide-y divide-neutral-800/60">
             {items.map((item) => {
-              const detailsHref = `/media/${item.media.source}/${item.media.externalId}?type=${item.media.type}&title=${encodeURIComponent(item.media.title)}`;
+              const coverParam = item.media.coverUrl ? `&cover=${encodeURIComponent(item.media.coverUrl)}` : '';
+              const detailsHref = `/media/${item.media.source}/${item.media.externalId}?type=${item.media.type}&title=${encodeURIComponent(item.media.title)}${coverParam}`;
 
               return (
               <tr key={item.id} className="hover:bg-neutral-800/30 transition-colors">

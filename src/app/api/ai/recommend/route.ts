@@ -112,42 +112,65 @@ Formato do JSON:
 ]
 `.trim();
 
-    // Chamada à API do Gemini com timeout de 25 segundos
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+    let geminiResponse: Response | null = null;
+    let selectedModel = candidateModels[0];
 
-    const modelName = 'gemini-2.5-flash';
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    for (const model of candidateModels) {
+      selectedModel = model;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
 
-    const geminiResponse = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          response_mime_type: 'application/json',
-          temperature: 0.7,
-        },
-      }),
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeout));
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    if (!geminiResponse.ok) {
-      const errText = await geminiResponse.text();
-      console.error('Gemini API Error:', geminiResponse.status, errText);
-      if (geminiResponse.status === 429) {
-        return NextResponse.json(
-          { error: { code: 'RATE_LIMIT', message: 'Cota de requisições do Gemini atingida. Aguarde um instante.' } },
-          { status: 429 }
-        );
+      try {
+        const res = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: prompt }],
+              },
+            ],
+            generationConfig: {
+              response_mime_type: 'application/json',
+              temperature: 0.7,
+            },
+          }),
+          signal: controller.signal,
+        });
+
+        if (res.ok) {
+          geminiResponse = res;
+          break;
+        } else {
+          const errText = await res.text();
+          console.error(`Gemini Error on model ${model}:`, res.status, errText);
+          // Se for 404 (modelo não encontrado), tenta o próximo modelo
+          if (res.status === 404) {
+            continue;
+          }
+          if (res.status === 429) {
+            return NextResponse.json(
+              { error: { code: 'RATE_LIMIT', message: 'Cota de requisições do Gemini atingida. Aguarde um instante.' } },
+              { status: 429 }
+            );
+          }
+          return NextResponse.json(
+            { error: { code: 'AI_ERROR', message: `Erro ao gerar recomendações com a IA (${res.status}).` } },
+            { status: 502 }
+          );
+        }
+      } finally {
+        clearTimeout(timeout);
       }
+    }
+
+    if (!geminiResponse || !geminiResponse.ok) {
       return NextResponse.json(
-        { error: { code: 'AI_ERROR', message: 'Erro ao gerar recomendações com a IA.' } },
+        { error: { code: 'AI_ERROR', message: 'Nenhum modelo Gemini compatível respondeu.' } },
         { status: 502 }
       );
     }
@@ -221,7 +244,7 @@ Formato do JSON:
 
     return NextResponse.json({
       items: verifiedItems,
-      model: modelName,
+      model: selectedModel,
       totalGenerated: parsedSuggestions.length,
       totalVerified: verifiedItems.length,
     });

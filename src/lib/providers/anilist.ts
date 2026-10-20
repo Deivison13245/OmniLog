@@ -275,7 +275,12 @@ export async function fetchAniListDiscover(
   return anilistLimiter(async () => {
     try {
       const anilistType = type === 'anime' ? 'ANIME' : 'MANGA';
-      const sort = kind === 'trending' ? ['TRENDING_DESC'] : ['SCORE_DESC'];
+      const sort =
+        kind === 'trending'
+          ? type === 'manga'
+            ? ['POPULARITY_DESC']
+            : ['TRENDING_DESC']
+          : ['SCORE_DESC'];
 
       const response = await fetch('https://graphql.anilist.co', {
         method: 'POST',

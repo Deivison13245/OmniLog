@@ -16,7 +16,8 @@ interface MediaCardProps {
 
 export function MediaCard({ item, inLibrary = false, onAdd, isAdding = false }: MediaCardProps) {
   const [imgError, setImgError] = useState(false);
-  const detailsHref = `/media/${item.source}/${item.externalId}?type=${item.type}&title=${encodeURIComponent(item.title)}`;
+  const coverParam = item.coverUrl ? `&cover=${encodeURIComponent(item.coverUrl)}` : '';
+  const detailsHref = `/media/${item.source}/${item.externalId}?type=${item.type}&title=${encodeURIComponent(item.title)}${coverParam}`;
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-neutral-800/80 bg-neutral-900/60 transition-all duration-300 hover:border-neutral-700 hover:shadow-xl hover:-translate-y-0.5">

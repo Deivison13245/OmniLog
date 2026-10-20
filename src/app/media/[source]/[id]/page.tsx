@@ -47,6 +47,7 @@ function MediaDetailsContent() {
   const id = params.id as string;
   const initialType = (searchParams.get('type') as MediaType) || 'game';
   const initialTitle = searchParams.get('title') || '';
+  const initialCover = searchParams.get('cover') || null;
 
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,7 +74,10 @@ function MediaDetailsContent() {
       // 1. Tentar ler do cache do Dexie
       const cached = await getCachedMediaDetails(source, id);
       if (cached && isMounted) {
-        setDetails(cached);
+        setDetails({
+          ...cached,
+          coverUrl: cached.coverUrl || initialCover,
+        });
         setIsLoading(false);
       }
 
@@ -94,13 +98,16 @@ function MediaDetailsContent() {
         if (isMounted) {
           setDetails((prev) => ({
             ...data,
-            coverUrl: prev?.coverUrl || data.coverUrl,
-            year: prev?.year || data.year,
-            title: prev?.title || data.title || initialTitle,
+            coverUrl: data.coverUrl || prev?.coverUrl || initialCover,
+            year: data.year || prev?.year,
+            title: data.title || prev?.title || initialTitle,
           }));
           setIsLoading(false);
           // Salvar em cache local (RF-T6)
-          await saveCachedMediaDetails(data);
+          await saveCachedMediaDetails({
+            ...data,
+            coverUrl: data.coverUrl || cached?.coverUrl || initialCover,
+          });
         }
       } catch (err) {
         if (isMounted && !cached) {
