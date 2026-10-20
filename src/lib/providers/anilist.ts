@@ -253,6 +253,9 @@ export async function fetchAniListDetails(
       return {
         synopsis: stripHtml(m.description),
         genres: m.genres || [],
+        coverUrl: m.coverImage?.extraLarge || m.coverImage?.large || undefined,
+        year: m.startDate?.year || undefined,
+        title: m.title?.english || m.title?.romaji || m.title?.native || undefined,
         externalLinks: externalLinks.length > 0 ? externalLinks : undefined,
         relations: relations.length > 0 ? relations : undefined,
       };

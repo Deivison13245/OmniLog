@@ -124,7 +124,7 @@ export async function fetchIGDBDetails(id: string): Promise<Partial<MediaDetails
     try {
       const query = `
         where id = ${id};
-        fields name, summary, genres.name,
+        fields name, summary, cover.image_id, genres.name,
                platforms.name, platforms.platform_family.name,
                release_dates.date, release_dates.platform.name,
                franchises.name, collection.name,
@@ -229,6 +229,10 @@ export async function fetchIGDBDetails(id: string): Promise<Partial<MediaDetails
 
       return {
         synopsis: game.summary,
+        coverUrl: game.cover?.image_id
+          ? `https://images.igdb.com/igdb/image/upload/t_cover_big/${game.cover.image_id}.jpg`
+          : undefined,
+        title: game.name,
         genres,
         platforms,
         franchise,
