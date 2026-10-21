@@ -148,15 +148,30 @@ Formato do JSON:
         } else {
           const errText = await res.text();
           console.error(`Gemini Error on model ${model}:`, res.status, errText);
-          // Se for 404 (modelo não encontrado), tenta o próximo modelo
-          if (res.status === 404) {
-            continue;
+          if (res.status === 400 || res.status === 401 || res.status === 403) {
+            let userMessage = `Erro de autorização com a API Gemini (${res.status}). Verifique a GEMINI_API_KEY.`;
+            try {
+              const parsedErr = JSON.parse(errText);
+              if (parsedErr?.error?.message) {
+                userMessage = `Gemini API: ${parsedErr.error.message}`;
+              }
+            } catch {
+              // Mantém mensagem padrão
+            }
+            return NextResponse.json(
+              { error: { code: 'AI_AUTH_ERROR', message: userMessage } },
+              { status: 502 }
+            );
           }
           if (res.status === 429) {
             return NextResponse.json(
               { error: { code: 'RATE_LIMIT', message: 'Cota de requisições do Gemini atingida. Aguarde um instante.' } },
               { status: 429 }
             );
+          }
+          // Se for 404 (modelo não encontrado) ou 503, tenta o próximo modelo
+          if (res.status === 404 || res.status === 503) {
+            continue;
           }
           return NextResponse.json(
             { error: { code: 'AI_ERROR', message: `Erro ao gerar recomendações com a IA (${res.status}).` } },

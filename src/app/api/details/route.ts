@@ -46,7 +46,8 @@ export async function GET(request: NextRequest) {
       partialDetails = await fetchIGDBDetails(id);
 
       // Bloco de tempo de jogo (RF-H1 a RF-H7):
-      if ((block === 'time' || block === 'all') && title) {
+      // Se o IGDB já não tiver retornado timeToBeat, tenta HLTB como fallback
+      if ((block === 'time' || block === 'all') && title && !partialDetails?.timeToBeat) {
         const hltbTime = await fetchHLTBTimeToBeat(title, overrideId);
         if (hltbTime) {
           partialDetails = {

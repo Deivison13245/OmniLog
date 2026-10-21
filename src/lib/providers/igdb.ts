@@ -127,8 +127,7 @@ export async function fetchIGDBDetails(id: string): Promise<Partial<MediaDetails
         fields name, summary, cover.image_id, genres.name,
                platforms.name, platforms.platform_family.name,
                release_dates.date, release_dates.platform.name,
-               franchises.name, collection.name,
-               game_time_to_beats.hastly, game_time_to_beats.normally, game_time_to_beats.completely;
+               franchises.name, collection.name;
         limit 1;
       `;
 
@@ -211,20 +210,32 @@ export async function fetchIGDBDetails(id: string): Promise<Partial<MediaDetails
         }
       }
 
-      // Tempo de jogo oficial IGDB (game_time_to_beats) - RF-H2
+      // Tempo de jogo oficial IGDB (consultado via endpoint dedicado game_time_to_beats) - RF-H2
       let timeToBeat: TimeToBeat | undefined;
-      if (game.game_time_to_beats && game.game_time_to_beats.length > 0) {
-        const tb = game.game_time_to_beats[0];
-        const secToHour = (s?: number) => (s && s > 0 ? Math.round((s / 3600) * 10) / 10 : undefined);
-        timeToBeat = {
-          source: 'igdb',
-          fetchedAt: new Date().toISOString(),
-          rushed: secToHour(tb.hastly),
-          normal: secToHour(tb.normally),
-          complete: secToHour(tb.completely),
-          mainStory: secToHour(tb.normally),
-          completionist: secToHour(tb.completely),
-        };
+      try {
+        const ttbRes = await fetch('https://api.igdb.com/v4/game_time_to_beats', {
+          method: 'POST',
+          headers: { 'Client-ID': clientId, Authorization: `Bearer ${token}` },
+          body: `where game_id = ${id}; fields hastily, normally, completely; limit 1;`,
+        });
+        if (ttbRes.ok) {
+          const ttbData = await ttbRes.json();
+          if (Array.isArray(ttbData) && ttbData.length > 0) {
+            const tb = ttbData[0];
+            const secToHour = (s?: number) => (s && s > 0 ? Math.round((s / 3600) * 10) / 10 : undefined);
+            timeToBeat = {
+              source: 'igdb',
+              fetchedAt: new Date().toISOString(),
+              rushed: secToHour(tb.hastily),
+              normal: secToHour(tb.normally),
+              complete: secToHour(tb.completely),
+              mainStory: secToHour(tb.normally),
+              completionist: secToHour(tb.completely),
+            };
+          }
+        }
+      } catch (ttbErr) {
+        console.warn('Erro ao buscar tempo de jogo no IGDB:', ttbErr);
       }
 
       return {
