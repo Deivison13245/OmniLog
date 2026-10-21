@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { orchestrateSearch } from '@/lib/search';
 import type { AiRecommendedItem, MediaItem } from '@/lib/types';
 
+export const maxDuration = 60;
+
 // Validação da entrada da requisição
 const profileItemSchema = z.object({
   title: z.string().min(1).max(150),
@@ -113,11 +115,10 @@ Formato do JSON:
 `.trim();
 
     const candidateModels = [
-      'gemini-flash-latest',
       'gemini-3.5-flash-lite',
+      'gemini-flash-latest',
       'gemini-3.7-flash',
       'gemini-3.8-flash',
-      'gemini-3-flash-preview',
     ];
     let geminiResponse: Response | null = null;
     let selectedModel = candidateModels[0];
@@ -125,7 +126,7 @@ Formato do JSON:
     for (const model of candidateModels) {
       selectedModel = model;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
+      const timeout = setTimeout(() => controller.abort(), 12000);
 
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
